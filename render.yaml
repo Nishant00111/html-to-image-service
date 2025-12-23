@@ -3,7 +3,7 @@ services:
     name: html-to-image-service
     env: python
     buildCommand: pip install -r requirements.txt && playwright install chromium
-    startCommand: python app.py
+    startCommand: gunicorn app:app
     envVars:
       - key: PORT
         value: 5000
