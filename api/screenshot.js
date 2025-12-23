@@ -9,21 +9,32 @@ chromium.setGraphicsMode(false);
 async function initBrowser() {
   if (!browser) {
     try {
+      console.log('Initializing Chromium...');
       const executablePath = await chromium.executablePath();
+      console.log('Chromium executable path:', executablePath);
       
-      browser = await puppeteer.launch({
-        args: [
-          ...chromium.args,
-          '--hide-scrollbars',
-          '--disable-web-security',
-        ],
-        defaultViewport: chromium.defaultViewport,
-        executablePath,
-        headless: chromium.headless,
-        ignoreHTTPSErrors: true,
-      });
+      browser = await Promise.race([
+        puppeteer.launch({
+          args: [
+            ...chromium.args,
+            '--hide-scrollbars',
+            '--disable-web-security',
+            '--disable-features=IsolateOrigins,site-per-process',
+          ],
+          defaultViewport: chromium.defaultViewport,
+          executablePath,
+          headless: chromium.headless,
+          ignoreHTTPSErrors: true,
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Browser launch timeout')), 20000)
+        )
+      ]);
+      
+      console.log('Browser initialized successfully');
     } catch (error) {
       console.error('Failed to launch browser:', error);
+      browser = null; // Reset so we can retry
       throw new Error(`Browser initialization failed: ${error.message}`);
     }
   }
