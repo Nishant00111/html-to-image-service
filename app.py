@@ -6,8 +6,17 @@ import os
 import subprocess
 import sys
 import base64
+import uuid
+from datetime import datetime, timedelta
+from threading import Lock
 
 app = Flask(__name__)
+
+# In-memory storage for temporary images (for serving via URL)
+# In production, consider using Redis or a file system with cleanup
+image_storage = {}
+image_storage_lock = Lock()
+IMAGE_EXPIRY_HOURS = 24  # Images expire after 24 hours
 
 # Ensure Playwright browsers are installed
 def ensure_playwright_browsers():
@@ -70,10 +79,14 @@ async def take_screenshot(html_content, width=1200, height=0, device_scale_facto
 @app.route('/', methods=['GET'])
 def health_check():
     """Health check endpoint"""
+    # Clean up expired images on health check
+    expired_count = cleanup_expired_images()
     return jsonify({
         "status": "ok",
         "message": "HTML to Image Service is running",
-        "routes": ["/screenshot"]
+        "routes": ["/screenshot", "/screenshot-url"],
+        "images_stored": len(image_storage),
+        "expired_cleaned": expired_count
     })
 
 @app.route('/screenshot', methods=['POST'])
@@ -125,7 +138,7 @@ def screenshot():
 
 @app.route('/screenshot-url', methods=['POST'])
 def screenshot_url():
-    """Convert HTML to image and return base64 data URL directly (no external service)"""
+    """Convert HTML to image and return HTTP URL (stored temporarily on server)"""
     try:
         data = request.get_json()
         
@@ -145,19 +158,71 @@ def screenshot_url():
         )
         loop.close()
         
-        # Convert to base64 data URL (no external service needed)
-        image_b64 = base64.b64encode(screenshot_bytes).decode('utf-8')
-        data_url = f"data:image/png;base64,{image_b64}"
+        # Generate unique ID for this image
+        image_id = str(uuid.uuid4())
+        expiry_time = datetime.now() + timedelta(hours=IMAGE_EXPIRY_HOURS)
+        
+        # Store image in memory
+        with image_storage_lock:
+            image_storage[image_id] = {
+                'data': screenshot_bytes,
+                'expiry': expiry_time,
+                'created': datetime.now()
+            }
+        
+        # Get base URL from request
+        base_url = request.url_root.rstrip('/')
+        image_url = f"{base_url}/image/{image_id}"
         
         return jsonify({
             "success": True,
-            "url": data_url,
-            "format": "data_url",
-            "message": "Screenshot created successfully (base64 data URL)"
+            "url": image_url,
+            "format": "http_url",
+            "message": "Screenshot created successfully",
+            "expires_in_hours": IMAGE_EXPIRY_HOURS
         })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/image/<image_id>', methods=['GET'])
+def serve_image(image_id):
+    """Serve a temporarily stored image by ID"""
+    try:
+        with image_storage_lock:
+            if image_id not in image_storage:
+                return jsonify({"error": "Image not found"}), 404
+            
+            image_data = image_storage[image_id]
+            
+            # Check if expired
+            if datetime.now() > image_data['expiry']:
+                # Clean up expired image
+                del image_storage[image_id]
+                return jsonify({"error": "Image has expired"}), 410
+            
+            # Return the image
+            return send_file(
+                io.BytesIO(image_data['data']),
+                mimetype='image/png',
+                as_attachment=False,
+                download_name='screenshot.png'
+            )
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def cleanup_expired_images():
+    """Clean up expired images (call this periodically)"""
+    with image_storage_lock:
+        now = datetime.now()
+        expired_ids = [
+            img_id for img_id, img_data in image_storage.items()
+            if now > img_data['expiry']
+        ]
+        for img_id in expired_ids:
+            del image_storage[img_id]
+        return len(expired_ids)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
