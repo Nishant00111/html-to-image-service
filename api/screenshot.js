@@ -24,13 +24,23 @@ async function initBrowser() {
       
       console.log('Launching Puppeteer...');
       
-      // Launch browser with timeout
+      // Launch browser with timeout and proper args for serverless
       browser = await Promise.race([
         puppeteer.launch({
-          args: chromium.args,
+          args: [
+            ...chromium.args,
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--disable-setuid-sandbox',
+            '--no-first-run',
+            '--no-sandbox',
+            '--no-zygote',
+            '--single-process',
+            '--disable-extensions',
+          ],
           defaultViewport: chromium.defaultViewport,
           executablePath,
-          headless: chromium.headless,
+          headless: true,
           ignoreHTTPSErrors: true,
         }),
         new Promise((_, reject) => 
