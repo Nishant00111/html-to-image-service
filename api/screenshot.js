@@ -8,13 +8,24 @@ chromium.setGraphicsMode(false);
 
 async function initBrowser() {
   if (!browser) {
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-      ignoreHTTPSErrors: true,
-    });
+    try {
+      const executablePath = await chromium.executablePath();
+      
+      browser = await puppeteer.launch({
+        args: [
+          ...chromium.args,
+          '--hide-scrollbars',
+          '--disable-web-security',
+        ],
+        defaultViewport: chromium.defaultViewport,
+        executablePath,
+        headless: chromium.headless,
+        ignoreHTTPSErrors: true,
+      });
+    } catch (error) {
+      console.error('Failed to launch browser:', error);
+      throw new Error(`Browser initialization failed: ${error.message}`);
+    }
   }
   return browser;
 }
@@ -39,24 +50,35 @@ module.exports = async (req, res) => {
     const browserInstance = await initBrowser();
     const page = await browserInstance.newPage();
 
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    try {
+      await page.setContent(html, { 
+        waitUntil: 'networkidle0',
+        timeout: 30000 
+      });
 
-    const screenshot = await page.screenshot({
-      type: 'png',
-      width,
-      height: height || undefined,
-      deviceScaleFactor,
-      fullPage: height === 0,
-    });
+      const screenshot = await page.screenshot({
+        type: 'png',
+        width: parseInt(width),
+        height: height ? parseInt(height) : undefined,
+        deviceScaleFactor: parseFloat(deviceScaleFactor),
+        fullPage: height === 0,
+        timeout: 30000
+      });
 
-    await page.close();
-
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Content-Disposition', 'inline; filename=screenshot.png');
-    res.status(200).send(screenshot);
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Content-Disposition', 'inline; filename=screenshot.png');
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      res.status(200).send(screenshot);
+    } finally {
+      await page.close();
+    }
+    
     return;
   } catch (error) {
     console.error('Error in /api/screenshot:', error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
