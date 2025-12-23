@@ -51,7 +51,8 @@ module.exports = async (req, res) => {
 
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Content-Disposition', 'inline; filename=screenshot.png');
-    return res.send(screenshot);
+    res.status(200).send(screenshot);
+    return;
   } catch (error) {
     console.error('Error in /api/screenshot:', error);
     return res.status(500).json({ error: error.message });
