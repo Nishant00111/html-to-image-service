@@ -1,7 +1,6 @@
 from playwright.async_api import async_playwright
 import json
-import base64
-from http.server import BaseHTTPRequestHandler
+import asyncio
 
 async def take_screenshot(html_content, width=1200, height=0, device_scale_factor=2):
     """Take a screenshot of HTML content using Playwright"""
@@ -36,64 +35,73 @@ async def take_screenshot(html_content, width=1200, height=0, device_scale_facto
         await browser.close()
         return screenshot
 
-class handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        """Handle GET requests"""
-        self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
-        response = {
-            "status": "ok",
-            "message": "HTML to Image Service is running",
-            "routes": ["/api/screenshot"]
-        }
-        self.wfile.write(json.dumps(response).encode())
+def handler(req):
+    """Vercel serverless function handler"""
+    import base64
     
-    def do_POST(self):
-        """Handle POST requests"""
-        import asyncio
+    # Handle GET requests
+    if req.method == 'GET':
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({
+                "status": "ok",
+                "message": "HTML to Image Service is running",
+                "routes": ["/api/screenshot"]
+            })
+        }
+    
+    # Handle POST requests
+    if req.method != 'POST':
+        return {
+            'statusCode': 405,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({"error": "Method Not Allowed"})
+        }
+    
+    try:
+        # Parse request body
+        data = json.loads(req.body) if isinstance(req.body, str) else req.body
         
-        try:
-            # Read request body
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length)
-            data = json.loads(body.decode('utf-8'))
-            
-            # Extract parameters
-            html = data.get('html', '')
-            width = int(data.get('width', 1200))
-            height = int(data.get('height', 0))
-            device_scale_factor = float(data.get('deviceScaleFactor', 2))
-            
-            if not html:
-                self.send_response(400)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "HTML content is required"}).encode())
-                return
-            
-            # Take screenshot
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            screenshot = loop.run_until_complete(
-                take_screenshot(html, width, height, device_scale_factor)
-            )
-            loop.close()
-            
-            # Send response
-            self.send_response(200)
-            self.send_header('Content-Type', 'image/png')
-            self.send_header('Content-Disposition', 'inline; filename=screenshot.png')
-            self.send_header('Cache-Control', 'public, max-age=31536000')
-            self.end_headers()
-            self.wfile.write(screenshot)
-            
-        except Exception as e:
-            self.send_response(500)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            error_response = {
-                "error": str(e)
+        # Extract parameters
+        html = data.get('html', '')
+        width = int(data.get('width', 1200))
+        height = int(data.get('height', 0))
+        device_scale_factor = float(data.get('deviceScaleFactor', 2))
+        
+        if not html:
+            return {
+                'statusCode': 400,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({"error": "HTML content is required"})
             }
-            self.wfile.write(json.dumps(error_response).encode())
+        
+        # Take screenshot (run async function)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        screenshot = loop.run_until_complete(
+            take_screenshot(html, width, height, device_scale_factor)
+        )
+        loop.close()
+        
+        # Convert to base64 for response
+        screenshot_b64 = base64.b64encode(screenshot).decode('utf-8')
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'image/png',
+                'Content-Disposition': 'inline; filename=screenshot.png',
+                'Cache-Control': 'public, max-age=31536000'
+            },
+            'body': screenshot_b64,
+            'isBase64Encoded': True
+        }
+        
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({"error": str(e)})
+        }
 
