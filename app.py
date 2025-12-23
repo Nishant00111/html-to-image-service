@@ -3,8 +3,35 @@ from playwright.async_api import async_playwright
 import asyncio
 import io
 import os
+import subprocess
+import sys
 
 app = Flask(__name__)
+
+# Ensure Playwright browsers are installed
+def ensure_playwright_browsers():
+    """Ensure Playwright browsers are installed"""
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            # Try to launch chromium to check if it's installed
+            browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
+            browser.close()
+    except Exception as e:
+        # If browsers are not installed, install them
+        error_msg = str(e)
+        if "Executable doesn't exist" in error_msg or "executable doesn't exist" in error_msg.lower():
+            print("Playwright browsers not found. Installing...")
+            try:
+                subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True, timeout=300)
+                print("Playwright browsers installed successfully")
+            except subprocess.TimeoutExpired:
+                print("Warning: Browser installation timed out")
+            except Exception as install_error:
+                print(f"Warning: Failed to install browsers: {install_error}")
+
+# Install browsers on startup if needed (only runs once)
+ensure_playwright_browsers()
 
 async def take_screenshot(html_content, width=1200, height=0, device_scale_factor=2):
     """Take a screenshot of HTML content using Playwright"""
