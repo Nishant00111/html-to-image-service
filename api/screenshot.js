@@ -3,10 +3,6 @@ const chromium = require('@sparticuz/chromium');
 
 let browser = null;
 
-// Configure Chromium for serverless
-chromium.setGraphicsMode(false);
-chromium.setHeadlessMode(true);
-
 async function initBrowser() {
   if (!browser) {
     try {
