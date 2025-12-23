@@ -5,37 +5,55 @@ let browser = null;
 
 // Configure Chromium for serverless
 chromium.setGraphicsMode(false);
+chromium.setHeadlessMode(true);
 
 async function initBrowser() {
   if (!browser) {
     try {
-      console.log('Initializing Chromium...');
-      const executablePath = await chromium.executablePath();
-      console.log('Chromium executable path:', executablePath);
+      console.log('Starting Chromium initialization...');
       
+      // Get executable path with error handling
+      let executablePath;
+      try {
+        executablePath = await chromium.executablePath();
+        console.log('Chromium executable path obtained');
+      } catch (pathError) {
+        console.error('Failed to get executable path:', pathError);
+        throw new Error(`Chromium executable path error: ${pathError.message}`);
+      }
+      
+      if (!executablePath) {
+        throw new Error('Chromium executable path is null or undefined');
+      }
+      
+      console.log('Launching Puppeteer...');
+      
+      // Launch browser with timeout
       browser = await Promise.race([
         puppeteer.launch({
-          args: [
-            ...chromium.args,
-            '--hide-scrollbars',
-            '--disable-web-security',
-            '--disable-features=IsolateOrigins,site-per-process',
-          ],
+          args: chromium.args,
           defaultViewport: chromium.defaultViewport,
           executablePath,
           headless: chromium.headless,
           ignoreHTTPSErrors: true,
         }),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Browser launch timeout')), 20000)
+          setTimeout(() => reject(new Error('Browser launch timeout after 25 seconds')), 25000)
         )
       ]);
       
-      console.log('Browser initialized successfully');
+      console.log('Browser launched successfully');
+      
+      // Test browser is working
+      const testPage = await browser.newPage();
+      await testPage.close();
+      console.log('Browser test successful');
+      
     } catch (error) {
-      console.error('Failed to launch browser:', error);
+      console.error('Browser initialization error:', error);
+      console.error('Error stack:', error.stack);
       browser = null; // Reset so we can retry
-      throw new Error(`Browser initialization failed: ${error.message}`);
+      throw error;
     }
   }
   return browser;
