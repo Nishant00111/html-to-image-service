@@ -2,6 +2,7 @@ services:
   - type: web
     name: html-to-image-service
     env: python
+    pythonVersion: "3.11"
     buildCommand: pip install -r requirements.txt && playwright install chromium
     startCommand: gunicorn app:app
     envVars:
