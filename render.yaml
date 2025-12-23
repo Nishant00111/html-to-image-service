@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: html-to-image-service
+    env: python
+    buildCommand: pip install -r requirements.txt && playwright install chromium
+    startCommand: python app.py
+    envVars:
+      - key: PORT
+        value: 5000
+
