@@ -5,7 +5,6 @@ import io
 import os
 import subprocess
 import sys
-import requests
 import base64
 
 app = Flask(__name__)
@@ -77,43 +76,6 @@ def health_check():
         "routes": ["/screenshot"]
     })
 
-def upload_to_imgur(image_bytes):
-    """Upload image to Imgur and return URL"""
-    try:
-        # Imgur API endpoint
-        url = "https://api.imgur.com/3/image"
-        
-        # Encode image to base64
-        image_b64 = base64.b64encode(image_bytes).decode('utf-8')
-        
-        # Imgur API headers (using anonymous upload - no auth needed)
-        headers = {
-            'Authorization': 'Client-ID 546c25a59c58ad7'  # Public Imgur client ID
-        }
-        
-        # Upload to Imgur
-        response = requests.post(
-            url,
-            headers=headers,
-            data={
-                'image': image_b64,
-                'type': 'base64'
-            },
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('success'):
-                return data['data']['link']  # Return the image URL
-            else:
-                raise Exception(f"Imgur upload failed: {data.get('data', {}).get('error', 'Unknown error')}")
-        else:
-            raise Exception(f"Imgur API error: {response.status_code}")
-            
-    except Exception as e:
-        raise Exception(f"Failed to upload to Imgur: {str(e)}")
-
 @app.route('/screenshot', methods=['POST'])
 def screenshot():
     """Convert HTML to image - returns file or URL based on 'returnUrl' parameter"""
@@ -137,21 +99,18 @@ def screenshot():
         )
         loop.close()
         
-        # If returnUrl is True, upload to Imgur and return URL
+        # If returnUrl is True, return base64 data URL (no external service needed)
         if return_url:
-            try:
-                image_url = upload_to_imgur(screenshot_bytes)
-                return jsonify({
-                    "success": True,
-                    "url": image_url,
-                    "message": "Screenshot uploaded successfully"
-                })
-            except Exception as upload_error:
-                # If upload fails, fall back to returning file
-                return jsonify({
-                    "error": f"Failed to upload image: {str(upload_error)}",
-                    "fallback": "Returning file instead"
-                }), 500
+            # Convert to base64 data URL
+            image_b64 = base64.b64encode(screenshot_bytes).decode('utf-8')
+            data_url = f"data:image/png;base64,{image_b64}"
+            
+            return jsonify({
+                "success": True,
+                "url": data_url,
+                "format": "data_url",
+                "message": "Screenshot created successfully (base64 data URL)"
+            })
         
         # Default: Return image file
         return send_file(
@@ -166,7 +125,7 @@ def screenshot():
 
 @app.route('/screenshot-url', methods=['POST'])
 def screenshot_url():
-    """Convert HTML to image and return URL directly"""
+    """Convert HTML to image and return base64 data URL directly (no external service)"""
     try:
         data = request.get_json()
         
@@ -186,13 +145,15 @@ def screenshot_url():
         )
         loop.close()
         
-        # Upload to Imgur and return URL
-        image_url = upload_to_imgur(screenshot_bytes)
+        # Convert to base64 data URL (no external service needed)
+        image_b64 = base64.b64encode(screenshot_bytes).decode('utf-8')
+        data_url = f"data:image/png;base64,{image_b64}"
         
         return jsonify({
             "success": True,
-            "url": image_url,
-            "message": "Screenshot created and uploaded successfully"
+            "url": data_url,
+            "format": "data_url",
+            "message": "Screenshot created successfully (base64 data URL)"
         })
         
     except Exception as e:
