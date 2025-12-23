@@ -10,8 +10,13 @@ async function initBrowser() {
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-extensions',
+        '--single-process',
+        '--no-zygote'
       ],
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     });
   }
   return browser;
